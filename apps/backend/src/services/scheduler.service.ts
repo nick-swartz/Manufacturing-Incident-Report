@@ -1,9 +1,9 @@
-import cron from 'node-cron';
+import * as cron from 'node-cron';
 import { JiraStatusSyncService } from './jiraStatusSync.service';
 import { logger } from '../utils/logger';
 
 export class SchedulerService {
-  private syncTask: cron.ScheduledTask | null = null;
+  private syncTask: ReturnType<typeof cron.schedule> | null = null;
   private lastSyncTime: Date | null = null;
   private syncInProgress: boolean = false;
 

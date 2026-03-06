@@ -5,6 +5,8 @@ import path from 'path';
 import { errorHandler } from './middleware/errorHandler';
 import incidentRoutes from './routes/incidents';
 import analyticsRoutes, { startScheduler, stopScheduler } from './routes/analytics';
+import authRoutes from './routes/auth.routes';
+import trackingRoutes from './routes/tracking';
 import { logger } from './utils/logger';
 import { initializeDatabase } from './config/database';
 
@@ -20,7 +22,11 @@ console.log('Environment check:', {
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-app.use(cors());
+app.use(cors({
+  origin: process.env.CORS_ORIGIN || '*',
+  credentials: true,
+  exposedHeaders: ['Authorization']
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -34,8 +40,10 @@ app.get('/health', (req: Request, res: Response) => {
 });
 
 // API routes
+app.use('/api/auth', authRoutes);
 app.use('/api/incidents', incidentRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/tracking', trackingRoutes);
 
 // Serve frontend static files in production
 if (process.env.NODE_ENV === 'production') {

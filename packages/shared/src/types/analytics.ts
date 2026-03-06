@@ -30,6 +30,7 @@ export interface IncidentSummary {
   affectedArea: string;
   system: string;
   severity: Severity;
+  impactDescription: string;
   status: 'pending' | 'submitted' | 'failed';
   createdAt: string;
   jiraTicketKey: string | null;
@@ -56,4 +57,5 @@ export interface AnalyticsFilters {
   system?: string[];
   status?: ('pending' | 'submitted' | 'failed')[];
   searchQuery?: string;
+  submittedByUserId?: string;
 }

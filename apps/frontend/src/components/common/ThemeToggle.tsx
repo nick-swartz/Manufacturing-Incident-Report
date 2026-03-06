@@ -4,17 +4,18 @@ import { useTheme } from '../../contexts/ThemeContext';
 const ThemeToggle: React.FC = () => {
   const { theme, effectiveTheme, setTheme } = useTheme();
 
-  const themes: Array<{ value: 'light' | 'dark' | 'system'; label: string; icon: string }> = [
+  const themes: Array<{ value: 'light' | 'dark'; label: string; icon: string }> = [
     { value: 'light', label: 'Light', icon: '☀️' },
     { value: 'dark', label: 'Dark', icon: '🌙' },
-    { value: 'system', label: 'System', icon: '💻' },
   ];
 
   return (
-    <div className="flex items-center gap-0.5 bg-background-card border border-border rounded-md p-0.5" role="group" aria-label="Theme selector">
+    <div className="flex items-center gap-0.5 bg-surface-card border border-line rounded-md p-0.5" role="group" aria-label="Theme selector">
       {themes.map((themeOption) => {
-        const isActive = theme === themeOption.value;
-        const isEffective = effectiveTheme === (themeOption.value === 'system' ? effectiveTheme : themeOption.value);
+        // If theme is 'system', highlight based on effectiveTheme
+        const isActive = theme === 'system'
+          ? effectiveTheme === themeOption.value
+          : theme === themeOption.value;
 
         return (
           <button
@@ -27,12 +28,12 @@ const ThemeToggle: React.FC = () => {
               min-h-[28px] min-w-[28px]
               ${isActive
                 ? 'bg-primary-500 text-white shadow-sm'
-                : 'text-foreground-secondary hover:bg-gray-100 dark:hover:bg-gray-700'
+                : 'text-text-secondary hover:bg-gray-100 dark:hover:bg-gray-700'
               }
             `}
             aria-label={`${themeOption.label} theme${isActive ? ' (active)' : ''}`}
             aria-pressed={isActive}
-            title={`Switch to ${themeOption.label.toLowerCase()} theme${themeOption.value === 'system' ? ` (currently ${effectiveTheme})` : ''}`}
+            title={`Switch to ${themeOption.label.toLowerCase()} theme`}
           >
             <span className="text-sm" aria-hidden="true">{themeOption.icon}</span>
           </button>

@@ -70,6 +70,12 @@ export class AnalyticsService {
       }
     }
 
+    // Filter by user who submitted the incident
+    if (filters.submittedByUserId) {
+      conditions.push('submitted_by_user_id = ?');
+      values.push(filters.submittedByUserId);
+    }
+
     const clause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
     return { clause, values };
   }
@@ -170,7 +176,7 @@ export class AnalyticsService {
 
       const offset = (page - 1) * limit;
       const query = `
-        SELECT id, incident_id, affected_area, system, severity, status, created_at,
+        SELECT id, incident_id, affected_area, system, severity, impact_description, status, created_at,
                jira_ticket_key, jira_ticket_url, jira_status, jira_status_updated_at,
                reporter_name, reporter_contact, jira_assignee
         FROM incidents
@@ -190,6 +196,7 @@ export class AnalyticsService {
             affectedArea: this.getColumnValue(columns, row, 'affected_area') as string,
             system: this.getColumnValue(columns, row, 'system') as string,
             severity: this.getColumnValue(columns, row, 'severity') as Severity,
+            impactDescription: this.getColumnValue(columns, row, 'impact_description') as string,
             status: this.getColumnValue(columns, row, 'status') as 'pending' | 'submitted' | 'failed',
             createdAt: this.getColumnValue(columns, row, 'created_at') as string,
             jiraTicketKey: this.getColumnValue(columns, row, 'jira_ticket_key') as string | null,

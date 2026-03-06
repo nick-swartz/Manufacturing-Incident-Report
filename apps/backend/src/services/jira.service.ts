@@ -157,7 +157,7 @@ export class JiraService {
 
     // Fall back to regular Jira API
     try {
-      const payload = {
+      const payload: any = {
         fields: {
           project: {
             key: this.projectKey
@@ -172,9 +172,27 @@ export class JiraService {
         }
       };
 
+      // Add assignee if provided
+      if (incident.assigneeEmail) {
+        try {
+          const users = await this.searchUsers(incident.assigneeEmail);
+          const assignee = users.find(u => u.emailAddress.toLowerCase() === incident.assigneeEmail!.toLowerCase());
+          if (assignee) {
+            payload.fields.assignee = { accountId: assignee.accountId };
+            logger.info(`Assigning issue to ${assignee.displayName} (${assignee.emailAddress})`);
+          } else {
+            logger.warn(`Assignee not found: ${incident.assigneeEmail}`);
+          }
+        } catch (error: any) {
+          logger.error(`Failed to lookup assignee: ${incident.assigneeEmail}`, error);
+          // Continue without assignment rather than failing the entire issue creation
+        }
+      }
+
       logger.debug('Creating Jira issue via regular API', {
         summary,
         reporterEmail: incident.reporterContact,
+        assigneeEmail: incident.assigneeEmail,
         payload: JSON.stringify(payload)
       });
 
@@ -207,6 +225,7 @@ export class JiraService {
     logger.debug('Creating Service Desk request', {
       summary,
       reporterEmail: incident.reporterContact,
+      assigneeEmail: incident.assigneeEmail,
       payload: JSON.stringify(payload)
     });
 
@@ -216,6 +235,27 @@ export class JiraService {
     const issueKey = response.data.issueKey;
 
     logger.info(`Service Desk request created: ${issueKey} (Reporter: ${incident.reporterContact})`);
+
+    // Assign the issue if assignee is provided
+    // Service Desk API doesn't support setting assignee during creation,
+    // so we update it after creation using the regular Jira API
+    if (incident.assigneeEmail) {
+      try {
+        const users = await this.searchUsers(incident.assigneeEmail);
+        const assignee = users.find(u => u.emailAddress.toLowerCase() === incident.assigneeEmail!.toLowerCase());
+        if (assignee) {
+          await this.client.put(`/issue/${issueKey}/assignee`, {
+            accountId: assignee.accountId
+          });
+          logger.info(`Assigned Service Desk issue ${issueKey} to ${assignee.displayName} (${assignee.emailAddress})`);
+        } else {
+          logger.warn(`Assignee not found for Service Desk issue: ${incident.assigneeEmail}`);
+        }
+      } catch (error: any) {
+        logger.error(`Failed to assign Service Desk issue ${issueKey}`, error);
+        // Continue without failing the entire issue creation
+      }
+    }
 
     return {
       id: response.data.issueId,
@@ -309,6 +349,59 @@ Incident Start Time: ${incident.startTime.toLocaleString()}
     }
   }
 
+  async getIssueComments(issueKey: string): Promise<any[]> {
+    try {
+      const response = await this.client.get(`/issue/${issueKey}/comment`, {
+        params: {
+          orderBy: 'created',
+          maxResults: 50
+        }
+      });
+
+      const comments = response.data.comments || [];
+
+      return comments.map((comment: any) => ({
+        id: comment.id,
+        author: comment.author?.accountId || 'unknown',
+        authorDisplayName: comment.author?.displayName || comment.author?.emailAddress || 'Unknown',
+        body: this.extractCommentBody(comment.body),
+        created: comment.created,
+        updated: comment.updated
+      }));
+    } catch (error: any) {
+      if (error.response?.status === 404) {
+        logger.warn(`Jira issue not found: ${issueKey}`);
+        return [];
+      }
+      logger.error(`Failed to get Jira issue comments for ${issueKey}`, error.response?.data || error);
+      return [];
+    }
+  }
+
+  private extractCommentBody(body: any): string {
+    // Jira API returns comments in Atlassian Document Format (ADF)
+    // Extract text content from the ADF structure
+    if (!body || !body.content) {
+      return '';
+    }
+
+    let text = '';
+    const extractText = (node: any): void => {
+      if (node.type === 'text') {
+        text += node.text;
+      } else if (node.content && Array.isArray(node.content)) {
+        node.content.forEach((child: any) => extractText(child));
+        // Add line breaks between paragraphs
+        if (node.type === 'paragraph') {
+          text += '\n';
+        }
+      }
+    };
+
+    body.content.forEach((node: any) => extractText(node));
+    return text.trim();
+  }
+
   async getMultipleIssueStatuses(issueKeys: string[]): Promise<Map<string, { status: string; statusCategory: string; assignee: string | null }>> {
     const statusMap = new Map<string, { status: string; statusCategory: string; assignee: string | null }>();
 
@@ -344,6 +437,59 @@ Incident Start Time: ${incident.startTime.toLocaleString()}
       logger.error('Failed to fetch multiple Jira issue statuses', error.response?.data || error);
       // Return empty map instead of throwing to allow graceful degradation
       return statusMap;
+    }
+  }
+
+  async searchUsers(query: string = ''): Promise<Array<{ accountId: string; displayName: string; emailAddress: string }>> {
+    try {
+      const allUsers: Array<{ accountId: string; displayName: string; emailAddress: string }> = [];
+      let startAt = 0;
+      const maxResults = 50; // Jira's recommended batch size
+      let hasMore = true;
+
+      // Use assignable search endpoint to get all users who can be assigned to issues
+      while (hasMore) {
+        const response = await this.client.get('/user/assignable/search', {
+          params: {
+            project: this.projectKey, // Get assignable users for our project
+            query: query || '', // Search query (empty = all users)
+            startAt: startAt,
+            maxResults: maxResults
+          }
+        });
+
+        const users = response.data || [];
+
+        // Add users with email addresses to the list
+        const validUsers = users
+          .filter((user: any) => user.emailAddress && user.active !== false)
+          .map((user: any) => ({
+            accountId: user.accountId,
+            displayName: user.displayName || user.emailAddress,
+            emailAddress: user.emailAddress
+          }));
+
+        allUsers.push(...validUsers);
+
+        // Check if there are more users to fetch
+        if (users.length < maxResults) {
+          hasMore = false;
+        } else {
+          startAt += maxResults;
+        }
+
+        // Safety limit to prevent infinite loops
+        if (startAt > 1000) {
+          logger.warn('Reached safety limit of 1000 users, stopping pagination');
+          break;
+        }
+      }
+
+      logger.info(`Fetched ${allUsers.length} assignable Jira users`);
+      return allUsers;
+    } catch (error: any) {
+      logger.error('Failed to search Jira users', error.response?.data || error);
+      throw new Error(`Failed to search Jira users: ${error.message}`);
     }
   }
 }

@@ -1,5 +1,5 @@
 import { getDb, saveDatabase } from '../config/database';
-import { IncidentFormData, IncidentRecord } from '@incident-system/shared';
+import { IncidentFormData, IncidentRecord, User } from '@incident-system/shared';
 import { logger } from '../utils/logger';
 import fs from 'fs';
 import path from 'path';
@@ -14,19 +14,21 @@ export class StorageService {
   createIncident(
     id: string,
     incidentId: string,
-    formData: IncidentFormData
+    formData: IncidentFormData,
+    userId?: string
   ): void {
     const db = getDb();
 
     db.run(
       `INSERT INTO incidents (
-        id, incident_id, affected_area, system, severity,
+        id, incident_id, queue, affected_area, system, severity,
         impact_description, symptoms, start_time, reporter_name,
-        reporter_contact, attachment_paths, status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        reporter_contact, attachment_paths, status, submitted_by_user_id, submitted_as_guest
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         incidentId,
+        formData.queue,
         formData.affectedArea,
         formData.system,
         formData.severity,
@@ -36,12 +38,14 @@ export class StorageService {
         formData.reporterName,
         formData.reporterContact,
         JSON.stringify([]),
-        'pending'
+        'pending',
+        userId || null,
+        userId ? 0 : 1
       ]
     );
 
     saveDatabase();
-    logger.info(`Incident created in database: ${incidentId}`);
+    logger.info(`Incident created in database: ${incidentId}`, { userId, isGuest: !userId });
   }
 
   updateIncident(
@@ -166,6 +170,9 @@ export class StorageService {
       reporterContact: getColumnValue('reporter_contact') as string,
       jiraTicketKey: getColumnValue('jira_ticket_key') as string | null,
       jiraTicketUrl: getColumnValue('jira_ticket_url') as string | null,
+      jiraStatus: getColumnValue('jira_status') as string | null,
+      jiraStatusUpdatedAt: getColumnValue('jira_status_updated_at') as string | null,
+      jiraAssignee: getColumnValue('jira_assignee') as string | null,
       teamsMessageUrl: getColumnValue('teams_message_url') as string | null,
       attachmentPaths: JSON.parse((getColumnValue('attachment_paths') as string) || '[]'),
       status: getColumnValue('status') as any,
@@ -192,5 +199,212 @@ export class StorageService {
     }
 
     return movedPaths;
+  }
+
+  // User operations
+  createUser(
+    id: string,
+    email: string,
+    name: string,
+    role: 'admin' | 'analyst' | 'reporter',
+    jiraEmail?: string
+  ): User {
+    const db = getDb();
+
+    db.run(
+      `INSERT INTO users (id, email, name, role, jira_email, created_at, last_login_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        email,
+        name,
+        role,
+        jiraEmail || null,
+        new Date().toISOString(),
+        new Date().toISOString()
+      ]
+    );
+
+    saveDatabase();
+    logger.info(`User created: ${email} (${role})`);
+
+    return {
+      id,
+      email,
+      name,
+      role,
+      jiraEmail,
+      createdAt: new Date().toISOString(),
+      lastLoginAt: new Date().toISOString()
+    };
+  }
+
+  getUserById(userId: string): User | null {
+    const db = getDb();
+    const result = db.exec(
+      `SELECT * FROM users WHERE id = ?`,
+      [userId]
+    );
+
+    if (result.length === 0 || result[0].values.length === 0) return null;
+
+    const row = result[0].values[0];
+    const columns = result[0].columns;
+
+    const getColumnValue = (name: string): any => {
+      const index = columns.indexOf(name);
+      return index >= 0 ? row[index] : null;
+    };
+
+    return {
+      id: getColumnValue('id') as string,
+      email: getColumnValue('email') as string,
+      name: getColumnValue('name') as string,
+      role: getColumnValue('role') as any,
+      jiraEmail: getColumnValue('jira_email') as string | undefined,
+      createdAt: getColumnValue('created_at') as string,
+      lastLoginAt: getColumnValue('last_login_at') as string | undefined
+    };
+  }
+
+  getUserByEmail(email: string): User | null {
+    const db = getDb();
+    const result = db.exec(
+      `SELECT * FROM users WHERE email = ?`,
+      [email]
+    );
+
+    if (result.length === 0 || result[0].values.length === 0) return null;
+
+    const row = result[0].values[0];
+    const columns = result[0].columns;
+
+    const getColumnValue = (name: string): any => {
+      const index = columns.indexOf(name);
+      return index >= 0 ? row[index] : null;
+    };
+
+    return {
+      id: getColumnValue('id') as string,
+      email: getColumnValue('email') as string,
+      name: getColumnValue('name') as string,
+      role: getColumnValue('role') as any,
+      jiraEmail: getColumnValue('jira_email') as string | undefined,
+      createdAt: getColumnValue('created_at') as string,
+      lastLoginAt: getColumnValue('last_login_at') as string | undefined
+    };
+  }
+
+  updateLastLogin(userId: string): void {
+    const db = getDb();
+
+    db.run(
+      `UPDATE users SET last_login_at = ? WHERE id = ?`,
+      [new Date().toISOString(), userId]
+    );
+
+    saveDatabase();
+  }
+
+  updateUserOAuthTokens(
+    userId: string,
+    accessToken: string,
+    refreshToken: string,
+    expiresAt: Date
+  ): void {
+    const db = getDb();
+
+    db.run(
+      `UPDATE users SET
+        oauth_access_token = ?,
+        oauth_refresh_token = ?,
+        oauth_token_expires_at = ?,
+        last_login_at = ?
+      WHERE id = ?`,
+      [
+        accessToken,
+        refreshToken,
+        expiresAt.toISOString(),
+        new Date().toISOString(),
+        userId
+      ]
+    );
+
+    saveDatabase();
+    logger.info(`Updated OAuth tokens for user ${userId}`);
+  }
+
+  createUserWithOAuth(
+    id: string,
+    email: string,
+    name: string,
+    role: 'admin' | 'analyst' | 'reporter',
+    accessToken: string,
+    refreshToken: string,
+    expiresAt: Date
+  ): User {
+    const db = getDb();
+
+    db.run(
+      `INSERT INTO users (
+        id, email, name, role, jira_email,
+        oauth_access_token, oauth_refresh_token, oauth_token_expires_at,
+        created_at, last_login_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        email,
+        name,
+        role,
+        email,
+        accessToken,
+        refreshToken,
+        expiresAt.toISOString(),
+        new Date().toISOString(),
+        new Date().toISOString()
+      ]
+    );
+
+    saveDatabase();
+    logger.info(`User created with OAuth: ${email} (${role})`);
+
+    return {
+      id,
+      email,
+      name,
+      role,
+      jiraEmail: email,
+      createdAt: new Date().toISOString(),
+      lastLoginAt: new Date().toISOString()
+    };
+  }
+
+  listUsers(): User[] {
+    const db = getDb();
+    const result = db.exec(`SELECT * FROM users ORDER BY created_at DESC`);
+
+    if (result.length === 0 || result[0].values.length === 0) return [];
+
+    const columns = result[0].columns;
+    const users: User[] = [];
+
+    for (const row of result[0].values) {
+      const getColumnValue = (name: string): any => {
+        const index = columns.indexOf(name);
+        return index >= 0 ? row[index] : null;
+      };
+
+      users.push({
+        id: getColumnValue('id') as string,
+        email: getColumnValue('email') as string,
+        name: getColumnValue('name') as string,
+        role: getColumnValue('role') as any,
+        jiraEmail: getColumnValue('jira_email') as string | undefined,
+        createdAt: getColumnValue('created_at') as string,
+        lastLoginAt: getColumnValue('last_login_at') as string | undefined
+      });
+    }
+
+    return users;
   }
 }

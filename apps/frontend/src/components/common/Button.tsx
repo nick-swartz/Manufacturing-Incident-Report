@@ -9,12 +9,18 @@ export const Button: React.FC<ButtonProps> = ({
   variant = 'primary',
   children,
   className = '',
+  disabled,
   ...props
 }) => {
   const variantClasses = variant === 'primary' ? 'btn-primary' : 'btn-secondary';
 
   return (
-    <button className={`btn ${variantClasses} ${className}`} {...props}>
+    <button
+      className={`btn ${variantClasses} ${className}`}
+      disabled={disabled}
+      aria-disabled={disabled}
+      {...props}
+    >
       {children}
     </button>
   );

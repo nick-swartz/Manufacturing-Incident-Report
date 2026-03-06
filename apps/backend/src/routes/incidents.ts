@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { upload } from '../middleware/upload';
 import { validateIncidentData } from '../middleware/validation';
+import { optionalAuth } from '../middleware/auth.middleware';
 import { IncidentService } from '../services/incident.service';
 import { StorageService } from '../services/storage.service';
 import { JiraService } from '../services/jira.service';
@@ -37,6 +38,7 @@ const incidentService = new IncidentService(storageService, jiraService, teamsSe
 // Original endpoint with file upload support (for web form)
 router.post(
   '/',
+  optionalAuth,
   upload.array('files', 5),
   validateIncidentData,
   async (req: Request, res: Response, next: NextFunction) => {
@@ -44,6 +46,7 @@ router.post(
       const files = req.files as Express.Multer.File[];
 
       const formData: IncidentFormData = {
+        queue: req.body.queue || 'manufacturing',
         affectedArea: req.body.affectedArea,
         system: req.body.system,
         severity: req.body.severity as Severity,
@@ -51,16 +54,20 @@ router.post(
         symptoms: req.body.symptoms,
         startTime: new Date(req.body.startTime),
         reporterName: req.body.reporterName,
-        reporterContact: req.body.reporterContact
+        reporterContact: req.body.reporterContact,
+        assigneeEmail: req.body.assigneeEmail || undefined
       };
 
       logger.info('Received incident submission', {
         severity: formData.severity,
         system: formData.system,
-        filesCount: files?.length || 0
+        filesCount: files?.length || 0,
+        userId: req.user?.userId,
+        isGuest: !req.user,
+        assigneeEmail: formData.assigneeEmail || 'none'
       });
 
-      const result = await incidentService.processIncident(formData, files);
+      const result = await incidentService.processIncident(formData, files, req.user?.userId);
 
       if (result.success) {
         res.status(201).json(result);
@@ -76,12 +83,15 @@ router.post(
 // Power Automate-friendly JSON endpoint (no file uploads)
 router.post(
   '/powerautomate',
+  optionalAuth,
   express.json(),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       logger.info('Received Power Automate incident submission', {
         severity: req.body.severity,
-        system: req.body.system
+        system: req.body.system,
+        userId: req.user?.userId,
+        isGuest: !req.user
       });
 
       // Validate required fields
@@ -106,6 +116,7 @@ router.post(
       }
 
       const formData: IncidentFormData = {
+        queue: req.body.queue || 'manufacturing',
         affectedArea: req.body.affectedArea,
         system: req.body.system,
         severity: req.body.severity as Severity,
@@ -113,10 +124,11 @@ router.post(
         symptoms: req.body.symptoms,
         startTime: new Date(req.body.startTime),
         reporterName: req.body.reporterName,
-        reporterContact: req.body.reporterContact
+        reporterContact: req.body.reporterContact,
+        assigneeEmail: req.body.assigneeEmail || undefined
       };
 
-      const result = await incidentService.processIncident(formData);
+      const result = await incidentService.processIncident(formData, undefined, req.user?.userId);
 
       if (result.success) {
         res.status(201).json(result);
@@ -128,5 +140,16 @@ router.post(
     }
   }
 );
+
+// Get available assignees (users from DB + Jira users)
+router.get('/assignees', async (req: Request, res: Response) => {
+  try {
+    const assignees = await incidentService.getAvailableAssignees();
+    res.json({ success: true, assignees });
+  } catch (error: any) {
+    logger.error('Failed to fetch assignees', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch assignees' });
+  }
+});
 
 export default router;

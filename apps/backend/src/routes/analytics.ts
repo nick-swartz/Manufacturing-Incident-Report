@@ -1,4 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
+import { authenticateJWT } from '../middleware/auth.middleware';
 import { AnalyticsService } from '../services/analytics.service';
 import { StorageService } from '../services/storage.service';
 import { JiraService } from '../services/jira.service';
@@ -68,10 +69,14 @@ function parseFilters(req: Request): AnalyticsFilters {
     filters.searchQuery = req.query.searchQuery as string;
   }
 
+  if (req.query.submittedByUserId) {
+    filters.submittedByUserId = req.query.submittedByUserId as string;
+  }
+
   return filters;
 }
 
-router.get('/summary', async (req: Request, res: Response, next: NextFunction) => {
+router.get('/summary', authenticateJWT, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const filters = parseFilters(req);
     logger.info('Fetching summary metrics', filters);
@@ -84,7 +89,7 @@ router.get('/summary', async (req: Request, res: Response, next: NextFunction) =
   }
 });
 
-router.get('/incidents', async (req: Request, res: Response, next: NextFunction) => {
+router.get('/incidents', authenticateJWT, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const filters = parseFilters(req);
     const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
@@ -100,7 +105,7 @@ router.get('/incidents', async (req: Request, res: Response, next: NextFunction)
   }
 });
 
-router.get('/timeline', async (req: Request, res: Response, next: NextFunction) => {
+router.get('/timeline', authenticateJWT, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const filters = parseFilters(req);
     const groupBy = (req.query.groupBy as 'day' | 'week' | 'month') || 'day';
@@ -115,7 +120,7 @@ router.get('/timeline', async (req: Request, res: Response, next: NextFunction) 
   }
 });
 
-router.get('/by-severity', async (req: Request, res: Response, next: NextFunction) => {
+router.get('/by-severity', authenticateJWT, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const filters = parseFilters(req);
     logger.info('Fetching severity distribution', filters);
@@ -128,7 +133,7 @@ router.get('/by-severity', async (req: Request, res: Response, next: NextFunctio
   }
 });
 
-router.get('/by-system', async (req: Request, res: Response, next: NextFunction) => {
+router.get('/by-system', authenticateJWT, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const filters = parseFilters(req);
     logger.info('Fetching system distribution', filters);
@@ -141,7 +146,7 @@ router.get('/by-system', async (req: Request, res: Response, next: NextFunction)
   }
 });
 
-router.post('/sync-jira-status', async (req: Request, res: Response, next: NextFunction) => {
+router.post('/sync-jira-status', authenticateJWT, async (req: Request, res: Response, next: NextFunction) => {
   try {
     logger.info('Manual Jira status sync triggered');
 
@@ -165,7 +170,7 @@ router.post('/sync-jira-status', async (req: Request, res: Response, next: NextF
   }
 });
 
-router.get('/sync-status', (req: Request, res: Response) => {
+router.get('/sync-status', authenticateJWT, (req: Request, res: Response) => {
   res.json({
     lastSyncTime: schedulerService.getLastSyncTime(),
     syncInProgress: schedulerService.isSyncInProgress()

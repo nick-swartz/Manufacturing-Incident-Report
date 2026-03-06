@@ -1,4 +1,3 @@
-import axios from 'axios';
 import {
   SummaryMetrics,
   TimeSeriesDataPoint,
@@ -6,16 +5,7 @@ import {
   PaginatedIncidents,
   AnalyticsFilters
 } from '@incident-system/shared';
-
-const API_URL = import.meta.env.VITE_API_URL || '/api';
-
-const apiClient = axios.create({
-  baseURL: API_URL,
-  headers: {
-    'Content-Type': 'application/json'
-  },
-  timeout: 30000
-});
+import { apiClient } from './client';
 
 function buildQueryParams(filters: AnalyticsFilters): URLSearchParams {
   const params = new URLSearchParams();

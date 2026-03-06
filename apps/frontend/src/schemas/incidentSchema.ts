@@ -1,7 +1,11 @@
 import { z } from 'zod';
-import { Severity } from '@incident-system/shared';
+import { Severity, Queue } from '@incident-system/shared';
 
 export const incidentSchema = z.object({
+  queue: z.enum(['manufacturing', 'erp-support'] as const, {
+    errorMap: () => ({ message: 'Please select a queue' })
+  }),
+
   affectedArea: z.string()
     .min(1, 'Affected area is required')
     .max(200, 'Affected area must be less than 200 characters'),
@@ -39,6 +43,11 @@ export const incidentSchema = z.object({
       },
       'Must be a valid email or phone number'
     ),
+
+  assigneeEmail: z.union([
+    z.string().email('Must be a valid email'),
+    z.literal('')
+  ]).optional(),
 
   files: z.any().optional()
 });

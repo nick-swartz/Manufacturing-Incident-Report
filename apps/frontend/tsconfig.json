@@ -17,7 +17,7 @@
     "noFallthroughCasesInSwitch": true,
     "paths": {
       "@/*": ["./src/*"],
-      "@incident-system/shared": ["../../packages/shared/src/types/index.ts"]
+      "@incident-system/shared": ["../../packages/shared/src/index.ts"]
     }
   },
   "include": ["src"],

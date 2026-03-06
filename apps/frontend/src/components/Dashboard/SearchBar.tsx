@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useId } from 'react';
 
 interface SearchBarProps {
   value: string;
@@ -14,6 +14,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   placeholder = 'Search incidents by ID, keywords, system, reporter...'
 }) => {
   const [localValue, setLocalValue] = useState(value);
+  const id = useId();
 
   useEffect(() => {
     setLocalValue(value);
@@ -37,14 +38,18 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   };
 
   return (
-    <div className="relative">
+    <div className="relative" role="search">
+      <label htmlFor={id} className="sr-only">
+        Search incidents
+      </label>
       <div className="relative">
         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
           <svg
-            className="h-5 w-5 text-gray-400"
+            className="h-5 w-5 text-gray-400 dark:text-gray-500"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
+            aria-hidden="true"
           >
             <path
               strokeLinecap="round"
@@ -55,19 +60,23 @@ export const SearchBar: React.FC<SearchBarProps> = ({
           </svg>
         </div>
         <input
+          id={id}
           type="text"
           value={localValue}
           onChange={handleChange}
           onKeyPress={handleKeyPress}
           placeholder={placeholder}
-          className="block w-full pl-10 pr-10 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+          className="block w-full pl-10 pr-10 py-3 border border-line rounded-lg bg-surface-card text-text placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent dark:focus:ring-primary-400 text-sm"
+          aria-label="Search incidents"
         />
         {localValue && (
           <button
             onClick={handleClear}
-            className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+            className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 focus:outline-none focus:ring-2 focus:ring-primary-500 rounded dark:focus:ring-primary-400 min-h-[44px] min-w-[44px]"
+            aria-label="Clear search"
+            type="button"
           >
-            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"

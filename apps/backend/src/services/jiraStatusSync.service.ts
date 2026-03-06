@@ -34,7 +34,7 @@ export class JiraStatusSyncService {
         if (statusInfo) {
           this.storageService.updateIncident(incident.incidentId, {
             jiraStatus: statusInfo.status,
-            jiraAssignee: statusInfo.assignee
+            jiraAssignee: statusInfo.assignee || undefined
           });
           updated++;
           logger.debug(`Updated ${incident.jiraTicketKey}: status=${statusInfo.status}, assignee=${statusInfo.assignee || 'Unassigned'}`);
@@ -60,7 +60,7 @@ export class JiraStatusSyncService {
       if (statusInfo) {
         this.storageService.updateIncident(incidentId, {
           jiraStatus: statusInfo.status,
-          jiraAssignee: statusInfo.assignee
+          jiraAssignee: statusInfo.assignee || undefined
         });
         logger.info(`Updated ${jiraTicketKey}: status=${statusInfo.status}, assignee=${statusInfo.assignee || 'Unassigned'}`);
         return true;

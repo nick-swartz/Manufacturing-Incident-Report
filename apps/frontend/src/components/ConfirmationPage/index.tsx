@@ -24,42 +24,43 @@ export const ConfirmationPage: React.FC = () => {
 
   if (!result) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
         <Header />
-        <div className="flex items-center justify-center px-4 py-16">
+        <main id="main-content" className="flex items-center justify-center px-4 py-16">
           <div className="max-w-md w-full card-elevated p-8 text-center">
-            <svg className="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-16 h-16 text-gray-400 dark:text-gray-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <p className="text-gray-600 text-lg mb-6">No submission data found.</p>
+            <p className="text-text-secondary text-lg mb-6">No submission data found.</p>
             <Button onClick={() => navigate('/')} className="w-full">
               Go to Form
             </Button>
           </div>
-        </div>
+        </main>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
       <Header />
-      <div className="py-8 px-4 sm:px-6 lg:px-8">
+      <main id="main-content" className="py-8 px-4 sm:px-6 lg:px-8">
         <div className="max-w-3xl mx-auto">
           <div className="card-elevated">
             {/* Success Header */}
-            <div className="bg-gradient-to-r from-green-500 to-emerald-600 px-8 py-12 text-center relative overflow-hidden">
+            <div className="bg-gradient-to-r from-green-500 to-emerald-600 dark:from-green-600 dark:to-emerald-700 px-8 py-12 text-center relative overflow-hidden">
               {/* Decorative circles */}
               <div className="absolute top-0 left-0 w-32 h-32 bg-white opacity-10 rounded-full -translate-x-16 -translate-y-16"></div>
               <div className="absolute bottom-0 right-0 w-40 h-40 bg-white opacity-10 rounded-full translate-x-20 translate-y-20"></div>
 
               <div className="relative">
-                <div className="mx-auto flex items-center justify-center h-20 w-20 rounded-full bg-white shadow-lg mb-6 animate-bounce">
+                <div className="mx-auto flex items-center justify-center h-20 w-20 rounded-full bg-white dark:bg-gray-100 shadow-lg mb-6 animate-bounce" role="img" aria-label="Success checkmark">
                   <svg
-                    className="h-12 w-12 text-green-600"
+                    className="h-12 w-12 text-green-600 dark:text-green-700"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
+                    aria-hidden="true"
                   >
                     <path
                       strokeLinecap="round"
@@ -79,34 +80,34 @@ export const ConfirmationPage: React.FC = () => {
             {/* Main Content */}
             <div className="px-8 py-8 space-y-6">
               {/* Incident Tracking ID Card */}
-              <div className="bg-gradient-to-br from-primary-50 to-blue-50 border-2 border-primary-200 rounded-xl p-8 text-center shadow-sm">
-                <p className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">
+              <div className="bg-gradient-to-br from-primary-50 to-blue-50 dark:from-primary-900/20 dark:to-blue-900/20 border-2 border-primary-200 dark:border-primary-700 rounded-xl p-8 text-center shadow-sm">
+                <p className="text-sm font-semibold text-text-secondary mb-3 uppercase tracking-wide">
                   Your Incident Tracking ID
                 </p>
                 <div className="flex items-center justify-center gap-4 mb-4">
-                  <p className="text-4xl font-bold text-primary-700 font-mono tracking-tight">
+                  <p className="text-4xl font-bold text-primary-700 dark:text-primary-400 font-mono tracking-tight">
                     {result.incidentId}
                   </p>
                   <button
                     onClick={copyToClipboard}
-                    className="p-3 rounded-xl bg-white hover:bg-primary-100 border-2 border-primary-300 transition-all shadow-sm hover:shadow-md"
-                    title="Copy to clipboard"
+                    className="p-3 rounded-xl bg-surface-card hover:bg-primary-100 dark:hover:bg-primary-900/30 border-2 border-primary-300 dark:border-primary-700 transition-all shadow-sm hover:shadow-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-primary-400 dark:focus:ring-offset-gray-800 min-h-[44px] min-w-[44px]"
+                    aria-label={copied ? 'Tracking ID copied' : 'Copy tracking ID to clipboard'}
                   >
                     {copied ? (
-                      <svg className="w-7 h-7 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-7 h-7 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                       </svg>
                     ) : (
-                      <svg className="w-7 h-7 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-7 h-7 text-primary-600 dark:text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
                       </svg>
                     )}
                   </button>
                 </div>
-                <p className="text-sm font-medium text-primary-700">
+                <p className="text-sm font-medium text-primary-700 dark:text-primary-300" aria-live="polite" aria-atomic="true">
                   {copied ? (
                     <span className="flex items-center justify-center">
-                      <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                       </svg>
                       Copied to clipboard!
@@ -115,12 +116,20 @@ export const ConfirmationPage: React.FC = () => {
                     'Click the button to copy your ID'
                   )}
                 </p>
+                <div className="mt-4 bg-primary-100 dark:bg-primary-900/30 border-2 border-primary-300 dark:border-primary-700 rounded-lg p-4">
+                  <p className="text-sm font-semibold text-primary-900 dark:text-primary-200 flex items-center justify-center">
+                    <svg className="w-5 h-5 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Save this tracking ID! You can use it to check your incident status anytime.
+                  </p>
+                </div>
               </div>
 
               {/* Status Cards */}
               <div className="grid gap-5">
                 {result.jiraTicketKey && result.jiraTicketUrl && (
-                  <div className="border-2 border-blue-200 rounded-xl p-6 bg-blue-50 hover:shadow-md transition-shadow">
+                  <div className="border-2 border-blue-200 dark:border-blue-800 rounded-xl p-6 bg-blue-50 dark:bg-blue-900/20 hover:shadow-md transition-shadow">
                     <div className="flex items-start">
                       <div className="flex-shrink-0">
                         <div className="w-12 h-12 bg-blue-500 rounded-xl flex items-center justify-center shadow-sm">
@@ -140,17 +149,18 @@ export const ConfirmationPage: React.FC = () => {
                         </div>
                       </div>
                       <div className="ml-4 flex-1">
-                        <p className="text-base font-semibold text-gray-900 mb-1">
+                        <p className="text-base font-semibold text-text mb-1">
                           Jira Ticket Created
                         </p>
-                        <p className="text-sm text-gray-600 mb-3">
-                          Ticket Number: <span className="font-mono font-bold text-gray-900">{result.jiraTicketKey}</span>
+                        <p className="text-sm text-text-secondary mb-3">
+                          Ticket Number: <span className="font-mono font-bold text-text">{result.jiraTicketKey}</span>
                         </p>
                         <a
                           href={result.jiraTicketUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-flex items-center px-4 py-2 text-sm font-medium text-blue-700 bg-white border border-blue-300 rounded-lg hover:bg-blue-100 transition-colors shadow-sm"
+                          className="inline-flex items-center px-4 py-2 text-sm font-medium text-blue-700 dark:text-blue-300 bg-surface-card border border-blue-300 dark:border-blue-700 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 min-h-[44px]"
+                          aria-label={`View Jira ticket ${result.jiraTicketKey} (opens in new tab)`}
                         >
                           View in Jira
                           <svg
@@ -158,6 +168,7 @@ export const ConfirmationPage: React.FC = () => {
                             fill="none"
                             stroke="currentColor"
                             viewBox="0 0 24 24"
+                            aria-hidden="true"
                           >
                             <path
                               strokeLinecap="round"
@@ -175,8 +186,8 @@ export const ConfirmationPage: React.FC = () => {
                 {result.teamsPostStatus && (
                   <div className={`border-2 rounded-xl p-6 hover:shadow-md transition-shadow ${
                     result.teamsPostStatus === 'success'
-                      ? 'border-green-200 bg-green-50'
-                      : 'border-yellow-200 bg-yellow-50'
+                      ? 'border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20'
+                      : 'border-yellow-200 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-900/20'
                   }`}>
                     <div className="flex items-start">
                       <div className="flex-shrink-0">
@@ -217,10 +228,10 @@ export const ConfirmationPage: React.FC = () => {
                         </div>
                       </div>
                       <div className="ml-4 flex-1">
-                        <p className="text-base font-semibold text-gray-900 mb-1">
+                        <p className="text-base font-semibold text-text mb-1">
                           Microsoft Teams Notification
                         </p>
-                        <p className="text-sm text-gray-600">
+                        <p className="text-sm text-text-secondary">
                           {result.teamsPostStatus === 'success'
                             ? 'Successfully posted to your Teams channel'
                             : 'Failed to post to Teams channel'}
@@ -231,7 +242,7 @@ export const ConfirmationPage: React.FC = () => {
                 )}
 
                 {result.uploadedFiles && result.uploadedFiles.length > 0 && (
-                  <div className="border-2 border-purple-200 rounded-xl p-6 bg-purple-50 hover:shadow-md transition-shadow">
+                  <div className="border-2 border-purple-200 dark:border-purple-800 rounded-xl p-6 bg-purple-50 dark:bg-purple-900/20 hover:shadow-md transition-shadow">
                     <div className="flex items-start">
                       <div className="flex-shrink-0">
                         <div className="w-12 h-12 bg-purple-500 rounded-xl flex items-center justify-center shadow-sm">
@@ -251,16 +262,17 @@ export const ConfirmationPage: React.FC = () => {
                         </div>
                       </div>
                       <div className="ml-4 flex-1">
-                        <p className="text-base font-semibold text-gray-900 mb-3">
+                        <p className="text-base font-semibold text-text mb-3">
                           Attachments Uploaded ({result.uploadedFiles.length})
                         </p>
-                        <ul className="space-y-2">
+                        <ul className="space-y-2" role="list" aria-label="Uploaded files">
                           {result.uploadedFiles.map((file, index) => (
-                            <li key={index} className="flex items-center text-sm text-gray-700 bg-white px-3 py-2 rounded-lg border border-purple-200">
+                            <li key={index} className="flex items-center text-sm text-text-secondary bg-surface-card dark:bg-gray-700 px-3 py-2 rounded-lg border border-purple-200 dark:border-purple-800">
                               <svg
-                                className="h-5 w-5 text-green-500 mr-3 flex-shrink-0"
+                                className="h-5 w-5 text-green-500 dark:text-green-400 mr-3 flex-shrink-0"
                                 fill="currentColor"
                                 viewBox="0 0 20 20"
+                                aria-hidden="true"
                               >
                                 <path
                                   fillRule="evenodd"
@@ -280,17 +292,29 @@ export const ConfirmationPage: React.FC = () => {
             </div>
 
             {/* Footer Actions */}
-            <div className="bg-gradient-to-r from-gray-50 to-gray-100 px-8 py-6 border-t-2 border-gray-200">
+            <div className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900 px-8 py-6 border-t-2 border-gray-200 dark:border-gray-700">
               <div className="flex flex-col sm:flex-row justify-between items-center space-y-4 sm:space-y-0">
-                <Link
-                  to="/"
-                  className="text-sm font-medium text-primary-600 hover:text-primary-800 flex items-center group transition-colors"
-                >
-                  <svg className="w-5 h-5 mr-2 group-hover:-translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                  </svg>
-                  Back to Home
-                </Link>
+                <div className="flex flex-col sm:flex-row items-center space-y-2 sm:space-y-0 sm:space-x-4">
+                  <Link
+                    to={`/track?id=${result.incidentId}`}
+                    className="text-sm font-medium text-primary-600 hover:text-primary-800 flex items-center group transition-colors"
+                  >
+                    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                    Track This Incident Later
+                  </Link>
+                  <span className="hidden sm:inline text-gray-400">|</span>
+                  <Link
+                    to="/"
+                    className="text-sm font-medium text-gray-600 hover:text-gray-800 flex items-center group transition-colors"
+                  >
+                    <svg className="w-5 h-5 mr-2 group-hover:-translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                    </svg>
+                    Back to Home
+                  </Link>
+                </div>
                 <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-3 w-full sm:w-auto">
                   <Button
                     variant="secondary"
@@ -322,7 +346,7 @@ export const ConfirmationPage: React.FC = () => {
             </div>
           </div>
         </div>
-      </div>
+      </main>
     </div>
   );
 };

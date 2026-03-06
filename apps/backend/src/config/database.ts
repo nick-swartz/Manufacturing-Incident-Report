@@ -43,7 +43,25 @@ async function initializeDatabase(): Promise<Database> {
       teams_message_url TEXT,
       attachment_paths TEXT,
       status TEXT NOT NULL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      submitted_by_user_id TEXT,
+      submitted_as_guest INTEGER DEFAULT 1
+    );
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      email TEXT UNIQUE NOT NULL,
+      name TEXT NOT NULL,
+      role TEXT NOT NULL,
+      jira_email TEXT,
+      jira_credentials_encrypted TEXT,
+      oauth_access_token TEXT,
+      oauth_refresh_token TEXT,
+      oauth_token_expires_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      last_login_at DATETIME
     );
   `);
 
@@ -69,10 +87,55 @@ async function initializeDatabase(): Promise<Database> {
     // Column already exists, ignore
   }
 
+  try {
+    db.run(`ALTER TABLE incidents ADD COLUMN submitted_by_user_id TEXT;`);
+    logger.info('Added submitted_by_user_id column to incidents table');
+  } catch (e) {
+    // Column already exists, ignore
+  }
+
+  try {
+    db.run(`ALTER TABLE incidents ADD COLUMN submitted_as_guest INTEGER DEFAULT 1;`);
+    logger.info('Added submitted_as_guest column to incidents table');
+  } catch (e) {
+    // Column already exists, ignore
+  }
+
+  try {
+    db.run(`ALTER TABLE incidents ADD COLUMN queue TEXT DEFAULT 'manufacturing';`);
+    logger.info('Added queue column to incidents table');
+  } catch (e) {
+    // Column already exists, ignore
+  }
+
+  // OAuth columns for users table
+  try {
+    db.run(`ALTER TABLE users ADD COLUMN oauth_access_token TEXT;`);
+    logger.info('Added oauth_access_token column to users table');
+  } catch (e) {
+    // Column already exists, ignore
+  }
+
+  try {
+    db.run(`ALTER TABLE users ADD COLUMN oauth_refresh_token TEXT;`);
+    logger.info('Added oauth_refresh_token column to users table');
+  } catch (e) {
+    // Column already exists, ignore
+  }
+
+  try {
+    db.run(`ALTER TABLE users ADD COLUMN oauth_token_expires_at DATETIME;`);
+    logger.info('Added oauth_token_expires_at column to users table');
+  } catch (e) {
+    // Column already exists, ignore
+  }
+
   db.run(`CREATE INDEX IF NOT EXISTS idx_incident_id ON incidents(incident_id);`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_created_at ON incidents(created_at);`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_system ON incidents(system);`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_severity ON incidents(severity);`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_queue ON incidents(queue);`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_user_email ON users(email);`);
 
   saveDatabase();
 
