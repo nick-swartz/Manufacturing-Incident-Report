@@ -378,6 +378,36 @@ Incident Start Time: ${incident.startTime.toLocaleString()}
     }
   }
 
+  async getIssueAttachments(issueKey: string): Promise<any[]> {
+    try {
+      const response = await this.client.get(`/issue/${issueKey}`, {
+        params: {
+          fields: 'attachment'
+        }
+      });
+
+      const attachments = response.data.fields?.attachment || [];
+
+      return attachments.map((attachment: any) => ({
+        id: attachment.id,
+        filename: attachment.filename,
+        mimeType: attachment.mimeType,
+        size: attachment.size,
+        created: attachment.created,
+        author: attachment.author?.displayName || 'Unknown',
+        thumbnailUrl: attachment.thumbnail,
+        contentUrl: attachment.content
+      }));
+    } catch (error: any) {
+      if (error.response?.status === 404) {
+        logger.warn(`Jira issue not found: ${issueKey}`);
+        return [];
+      }
+      logger.error(`Failed to get Jira issue attachments for ${issueKey}`, error.response?.data || error);
+      return [];
+    }
+  }
+
   private extractCommentBody(body: any): string {
     // Jira API returns comments in Atlassian Document Format (ADF)
     // Extract text content from the ADF structure
@@ -440,19 +470,123 @@ Incident Start Time: ${incident.startTime.toLocaleString()}
     }
   }
 
+  async addComment(issueKey: string, commentText: string): Promise<string> {
+    try {
+      const payload = {
+        body: {
+          type: 'doc',
+          version: 1,
+          content: [
+            {
+              type: 'paragraph',
+              content: [
+                {
+                  type: 'text',
+                  text: commentText
+                }
+              ]
+            }
+          ]
+        }
+      };
+
+      const response = await this.client.post(`/issue/${issueKey}/comment`, payload);
+      const commentId = response.data.id;
+
+      logger.info(`Comment added to Jira issue ${issueKey}: ${commentId}`);
+      return commentId;
+    } catch (error: any) {
+      logger.error(`Failed to add comment to Jira issue ${issueKey}`, error.response?.data || error);
+      throw new Error(`Failed to add comment to Jira: ${error.message}`);
+    }
+  }
+
+  async fetchQueueTickets(projectKey: string, maxResults: number = 100): Promise<Array<{
+    key: string;
+    summary: string;
+    description: string;
+    status: string;
+    statusCategory: string;
+    assignee: string | null;
+    reporter: string;
+    reporterEmail: string;
+    created: string;
+    updated: string;
+    priority: string;
+    issueType: string;
+  }>> {
+    try {
+      // NOTE: Jira has deprecated all /search endpoints with pagination support.
+      // Only /rest/api/3/search/jql works, but it doesn't support startAt parameter.
+      // We're limited to 100 tickets per request.
+      const jql = `project = "${projectKey}" ORDER BY created DESC`;
+
+      const response = await this.client.post('/search/jql', {
+        jql,
+        fields: ['summary', 'description', 'status', 'assignee', 'reporter', 'created', 'updated', 'priority', 'issuetype'],
+        maxResults: maxResults
+      });
+
+      const tickets = (response.data.issues || []).map((issue: any) => ({
+        key: issue.key,
+        summary: issue.fields.summary || '',
+        description: this.extractDescriptionText(issue.fields.description),
+        status: issue.fields.status?.name || 'Unknown',
+        statusCategory: issue.fields.status?.statusCategory?.name || 'Unknown',
+        assignee: issue.fields.assignee?.displayName || issue.fields.assignee?.emailAddress || null,
+        reporter: issue.fields.reporter?.displayName || issue.fields.reporter?.emailAddress || 'Unknown',
+        reporterEmail: issue.fields.reporter?.emailAddress || '',
+        created: issue.fields.created,
+        updated: issue.fields.updated,
+        priority: issue.fields.priority?.name || 'Medium',
+        issueType: issue.fields.issuetype?.name || 'Task'
+      }));
+
+      logger.info(`Fetched ${tickets.length} total tickets from project: ${projectKey}`);
+      return tickets;
+    } catch (error: any) {
+      logger.error(`Failed to fetch tickets from project ${projectKey}`, error.response?.data || error);
+      throw new Error(`Failed to fetch project tickets: ${error.message}`);
+    }
+  }
+
+  private extractDescriptionText(description: any): string {
+    // Extract text from Atlassian Document Format
+    if (!description || !description.content) {
+      return '';
+    }
+
+    let text = '';
+    const extractText = (node: any): void => {
+      if (node.type === 'text') {
+        text += node.text;
+      } else if (node.content && Array.isArray(node.content)) {
+        node.content.forEach((child: any) => extractText(child));
+        if (node.type === 'paragraph') {
+          text += '\n';
+        }
+      }
+    };
+
+    description.content.forEach((node: any) => extractText(node));
+    return text.trim();
+  }
+
   async searchUsers(query: string = ''): Promise<Array<{ accountId: string; displayName: string; emailAddress: string }>> {
     try {
       const allUsers: Array<{ accountId: string; displayName: string; emailAddress: string }> = [];
       let startAt = 0;
-      const maxResults = 50; // Jira's recommended batch size
+      const maxResults = 100; // Increased batch size for faster fetching
       let hasMore = true;
 
-      // Use assignable search endpoint to get all users who can be assigned to issues
+      // Use general user search endpoint (doesn't require project)
+      // Try different search strategies to get all users
+      const searchQuery = query || '.'; // Use '.' as wildcard to match all users if no query provided
+
       while (hasMore) {
-        const response = await this.client.get('/user/assignable/search', {
+        const response = await this.client.get('/user/search', {
           params: {
-            project: this.projectKey, // Get assignable users for our project
-            query: query || '', // Search query (empty = all users)
+            query: searchQuery,
             startAt: startAt,
             maxResults: maxResults
           }
@@ -478,9 +612,9 @@ Incident Start Time: ${incident.startTime.toLocaleString()}
           startAt += maxResults;
         }
 
-        // Safety limit to prevent infinite loops
-        if (startAt > 1000) {
-          logger.warn('Reached safety limit of 1000 users, stopping pagination');
+        // Safety limit to prevent infinite loops (increased to accommodate large Jira instances)
+        if (startAt > 5000) {
+          logger.warn('Reached safety limit of 5000 users, stopping pagination');
           break;
         }
       }

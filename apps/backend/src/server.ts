@@ -2,6 +2,7 @@ import express, { Request, Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
+import fs from 'fs';
 import { errorHandler } from './middleware/errorHandler';
 import incidentRoutes from './routes/incidents';
 import analyticsRoutes, { startScheduler, stopScheduler } from './routes/analytics';
@@ -29,6 +30,58 @@ app.use(cors({
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Serve uploaded files with inline disposition for images
+const uploadDir = process.env.UPLOAD_DIR || path.join(__dirname, '../../../uploads');
+
+// Custom route for viewing images/files inline
+app.get('/uploads/*', (req: Request, res: Response) => {
+  const filePath = path.join(uploadDir, req.params[0]);
+
+  // Security check - ensure path is within uploadDir
+  const resolvedPath = path.resolve(filePath);
+  const resolvedUploadDir = path.resolve(uploadDir);
+
+  logger.info(`File request: ${req.params[0]}`);
+  logger.info(`Resolved path: ${resolvedPath}`);
+
+  if (!resolvedPath.startsWith(resolvedUploadDir)) {
+    logger.warn(`Access denied: ${resolvedPath} not in ${resolvedUploadDir}`);
+    return res.status(403).json({ error: 'Access denied' });
+  }
+
+  // Check if file exists
+  if (!fs.existsSync(resolvedPath)) {
+    logger.warn(`File not found: ${resolvedPath}`);
+    return res.status(404).json({ error: 'File not found' });
+  }
+
+  const ext = path.extname(filePath).toLowerCase();
+
+  // Map file extensions to proper MIME types
+  const mimeTypes: { [key: string]: string } = {
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.png': 'image/png',
+    '.gif': 'image/gif',
+    '.webp': 'image/webp',
+    '.bmp': 'image/bmp',
+    '.svg': 'image/svg+xml',
+    '.pdf': 'application/pdf'
+  };
+
+  const mimeType = mimeTypes[ext] || 'application/octet-stream';
+
+  // Force inline display - don't trigger download
+  res.setHeader('Content-Disposition', 'inline');
+  res.setHeader('Content-Type', mimeType);
+  res.setHeader('Cache-Control', 'public, max-age=31536000');
+
+  logger.info(`Serving file with Content-Type: ${mimeType}, Content-Disposition: inline`);
+
+  // Send the file
+  res.sendFile(resolvedPath);
+});
 
 // Health check
 app.get('/health', (req: Request, res: Response) => {

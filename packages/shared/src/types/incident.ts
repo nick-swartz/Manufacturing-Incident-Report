@@ -49,8 +49,20 @@ export interface JiraComment {
   updated: string;
 }
 
+export interface JiraAttachment {
+  id: string;
+  filename: string;
+  mimeType: string;
+  size: number;
+  created: string;
+  author: string;
+  thumbnailUrl?: string;
+  contentUrl: string;
+}
+
 export interface PublicIncidentData {
   incidentId: string;
+  queue: Queue;
   affectedArea: string;
   system: string;
   severity: Severity;
@@ -65,6 +77,9 @@ export interface PublicIncidentData {
   jiraStatusUpdatedAt?: string | null;
   jiraAssignee?: string | null;
   jiraComments?: JiraComment[];
+  jiraAttachments?: JiraAttachment[];
+  attachmentPaths?: string[];
+  source?: 'local' | 'jira-queue';
 }
 
 export interface TrackingLookupResponse {

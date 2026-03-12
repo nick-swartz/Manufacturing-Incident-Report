@@ -130,12 +130,88 @@ async function initializeDatabase(): Promise<Database> {
     // Column already exists, ignore
   }
 
+  // Add source field to incidents table
+  try {
+    db.run(`ALTER TABLE incidents ADD COLUMN source TEXT DEFAULT 'local';`);
+    logger.info('Added source column to incidents table');
+  } catch (e) {
+    // Column already exists, ignore
+  }
+
+  // Add jira_key_normalized for faster lookups
+  try {
+    db.run(`ALTER TABLE incidents ADD COLUMN jira_key_normalized TEXT;`);
+    logger.info('Added jira_key_normalized column to incidents table');
+  } catch (e) {
+    // Column already exists, ignore
+  }
+
+  // Migration: Convert absolute attachment paths to relative paths
+  try {
+    const result = db.exec(`SELECT incident_id, attachment_paths FROM incidents WHERE attachment_paths IS NOT NULL AND attachment_paths != '[]'`);
+    if (result.length > 0 && result[0].values.length > 0) {
+      let migratedCount = 0;
+      for (const row of result[0].values) {
+        const incidentId = row[0] as string;
+        const attachmentPathsJson = row[1] as string;
+
+        try {
+          const paths = JSON.parse(attachmentPathsJson);
+          let needsUpdate = false;
+          const updatedPaths = paths.map((p: string) => {
+            // If path is absolute (starts with / or contains full path), convert to relative
+            if (p.startsWith('/') || !p.startsWith('uploads/')) {
+              needsUpdate = true;
+              // Extract just the filename
+              const parts = p.split('/');
+              const fileName = parts[parts.length - 1];
+              return `uploads/${incidentId}/${fileName}`;
+            }
+            return p;
+          });
+
+          if (needsUpdate) {
+            db.run(
+              `UPDATE incidents SET attachment_paths = ? WHERE incident_id = ?`,
+              [JSON.stringify(updatedPaths), incidentId]
+            );
+            migratedCount++;
+          }
+        } catch (e) {
+          logger.warn(`Failed to migrate attachment paths for incident ${incidentId}`, e);
+        }
+      }
+      if (migratedCount > 0) {
+        logger.info(`Migrated attachment paths for ${migratedCount} incidents`);
+        saveDatabase();
+      }
+    }
+  } catch (e) {
+    logger.warn('Failed to run attachment paths migration', e);
+  }
+
+  // Comments table
+  db.run(`
+    CREATE TABLE IF NOT EXISTS comments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      incident_id TEXT NOT NULL,
+      author_name TEXT NOT NULL,
+      author_email TEXT NOT NULL,
+      comment_text TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      jira_comment_id TEXT,
+      source TEXT DEFAULT 'local',
+      FOREIGN KEY (incident_id) REFERENCES incidents(incident_id)
+    );
+  `);
+
   db.run(`CREATE INDEX IF NOT EXISTS idx_incident_id ON incidents(incident_id);`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_created_at ON incidents(created_at);`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_system ON incidents(system);`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_severity ON incidents(severity);`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_queue ON incidents(queue);`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_user_email ON users(email);`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_comments_incident_id ON comments(incident_id);`);
 
   saveDatabase();
 

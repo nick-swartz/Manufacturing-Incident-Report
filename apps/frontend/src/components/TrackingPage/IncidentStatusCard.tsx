@@ -1,15 +1,26 @@
 import React, { useState } from 'react';
 import { PublicIncidentData } from '@incident-system/shared';
+import { refreshJiraStatus } from '../../api/incidents';
 
 interface Props {
   incident: PublicIncidentData;
+  onStatusRefresh?: () => void;
 }
 
-export const IncidentStatusCard: React.FC<Props> = ({ incident }) => {
+export const IncidentStatusCard: React.FC<Props> = ({ incident, onStatusRefresh }) => {
   const [copied, setCopied] = useState(false);
   const [expandedComments, setExpandedComments] = useState<Set<string>>(new Set());
   const [expandedSymptoms, setExpandedSymptoms] = useState(false);
   const [expandedImpact, setExpandedImpact] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [refreshMessage, setRefreshMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [lightboxImage, setLightboxImage] = useState<{ url: string; filename: string } | null>(null);
+
+  // Debug: Log incident data to see attachments
+  React.useEffect(() => {
+    console.log('Incident data:', incident);
+    console.log('Attachment paths:', incident.attachmentPaths);
+  }, [incident]);
 
   const copyToClipboard = async () => {
     await navigator.clipboard.writeText(incident.incidentId);
@@ -83,6 +94,32 @@ export const IncidentStatusCard: React.FC<Props> = ({ incident }) => {
     });
   };
 
+  const handleRefreshStatus = async () => {
+    setIsRefreshing(true);
+    setRefreshMessage(null);
+
+    const result = await refreshJiraStatus(incident.incidentId);
+
+    if (result.success) {
+      setRefreshMessage({
+        type: 'success',
+        text: `Status updated: ${result.status}${result.assignee ? ` • Assigned to: ${result.assignee}` : ''}`
+      });
+      setTimeout(() => setRefreshMessage(null), 5000);
+      if (onStatusRefresh) {
+        onStatusRefresh();
+      }
+    } else {
+      setRefreshMessage({
+        type: 'error',
+        text: result.error || 'Failed to refresh status'
+      });
+      setTimeout(() => setRefreshMessage(null), 5000);
+    }
+
+    setIsRefreshing(false);
+  };
+
   const getRelativeTime = (date: string | null) => {
     if (!date) return null;
     const now = new Date();
@@ -144,6 +181,15 @@ export const IncidentStatusCard: React.FC<Props> = ({ incident }) => {
           {incident.jiraStatus && (
             <span className={`px-3 py-1 rounded-full text-sm font-semibold ${getJiraStatusColor(incident.jiraStatus)}`}>
               Jira: {incident.jiraStatus}
+            </span>
+          )}
+          {incident.source && (
+            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+              incident.source === 'jira-queue'
+                ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-200'
+                : 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200'
+            }`}>
+              {incident.source === 'jira-queue' ? 'From PHXERP Queue' : 'Created Here'}
             </span>
           )}
           <span className="text-sm text-text-secondary">
@@ -237,10 +283,151 @@ export const IncidentStatusCard: React.FC<Props> = ({ incident }) => {
           </div>
         </div>
 
+        {/* Attachments */}
+        {((incident.attachmentPaths && incident.attachmentPaths.length > 0) ||
+          (incident.jiraAttachments && incident.jiraAttachments.length > 0)) && (
+          <div>
+            <p className="text-sm font-medium text-text-muted mb-3">
+              Attachments ({(incident.attachmentPaths?.length || 0) + (incident.jiraAttachments?.length || 0)})
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Local attachments */}
+              {incident.attachmentPaths?.map((path, index) => {
+                const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+
+                // Handle both relative paths (uploads/...) and absolute paths
+                let imagePath = path;
+                if (path.startsWith('/')) {
+                  // Absolute path - extract just the relative part after uploads
+                  const uploadsIndex = path.indexOf('uploads/');
+                  if (uploadsIndex !== -1) {
+                    imagePath = path.substring(uploadsIndex);
+                  }
+                } else if (!path.startsWith('uploads/')) {
+                  // Path doesn't start with uploads/ - might be just filename
+                  // Extract incident ID from current incident and construct path
+                  const parts = path.split('/');
+                  const fileName = parts[parts.length - 1];
+                  imagePath = `uploads/${incident.incidentId}/${fileName}`;
+                }
+
+                const imageUrl = `${apiUrl}/${imagePath}`;
+                const fileName = imagePath.split('/').pop() || `attachment-${index + 1}`;
+
+                return (
+                  <div key={index} className="relative group">
+                    <button
+                      onClick={() => setLightboxImage({ url: imageUrl, filename: fileName })}
+                      className="w-full text-left block bg-gray-50 dark:bg-gray-700/50 rounded-lg overflow-hidden border border-line hover:border-primary-500 dark:hover:border-primary-400 transition-all focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 cursor-pointer"
+                    >
+                      <img
+                        src={imageUrl}
+                        alt={`Attachment ${index + 1}: ${fileName}`}
+                        className="w-full h-48 object-cover"
+                        onError={(e) => {
+                          // Fallback if image fails to load
+                          const target = e.target as HTMLImageElement;
+                          target.style.display = 'none';
+                          const parent = target.parentElement;
+                          if (parent) {
+                            parent.innerHTML = `
+                              <div class="flex flex-col items-center justify-center h-48 text-text-muted">
+                                <svg class="w-12 h-12 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                                <p class="text-sm font-medium">File attachment</p>
+                                <p class="text-xs">${fileName}</p>
+                              </div>
+                            `;
+                          }
+                        }}
+                      />
+                      <div className="p-2 bg-white dark:bg-gray-800 border-t border-line">
+                        <p className="text-xs text-text-secondary truncate">{fileName}</p>
+                      </div>
+                    </button>
+                    <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="bg-black/70 text-white text-xs px-2 py-1 rounded">
+                        Click to view full size
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* Jira attachments */}
+              {incident.jiraAttachments?.map((attachment, index) => {
+                const isImage = attachment.mimeType?.startsWith('image/');
+                const imageUrl = isImage && attachment.thumbnailUrl ? attachment.thumbnailUrl : attachment.contentUrl;
+
+                return (
+                  <div key={`jira-${attachment.id}`} className="relative group">
+                    <button
+                      onClick={() => setLightboxImage({ url: attachment.contentUrl, filename: attachment.filename })}
+                      className="w-full text-left block bg-blue-50 dark:bg-blue-900/20 rounded-lg overflow-hidden border-2 border-blue-200 dark:border-blue-700 hover:border-blue-400 dark:hover:border-blue-500 transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 cursor-pointer"
+                    >
+                      {isImage ? (
+                        <img
+                          src={imageUrl}
+                          alt={`Jira attachment: ${attachment.filename}`}
+                          className="w-full h-48 object-cover"
+                          onError={(e) => {
+                            const target = e.target as HTMLImageElement;
+                            target.style.display = 'none';
+                            const parent = target.parentElement;
+                            if (parent) {
+                              parent.innerHTML = `
+                                <div class="flex flex-col items-center justify-center h-48 text-blue-700 dark:text-blue-300">
+                                  <svg class="w-12 h-12 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                  </svg>
+                                  <p class="text-sm font-medium">Image from Jira</p>
+                                  <p class="text-xs">${attachment.filename}</p>
+                                </div>
+                              `;
+                            }
+                          }}
+                        />
+                      ) : (
+                        <div className="flex flex-col items-center justify-center h-48 text-blue-700 dark:text-blue-300">
+                          <svg className="w-12 h-12 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                          <p className="text-sm font-medium">File from Jira</p>
+                          <p className="text-xs truncate max-w-[150px]">{attachment.filename}</p>
+                        </div>
+                      )}
+                      <div className="p-2 bg-blue-100 dark:bg-blue-800 border-t border-blue-200 dark:border-blue-700">
+                        <div className="flex items-center gap-2">
+                          <svg className="w-3 h-3 text-blue-600 dark:text-blue-400 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M11.53 2c0 2.4 1.97 4.35 4.35 4.35h1.78v1.7c0 2.4 1.94 4.34 4.34 4.34V2.84a.84.84 0 00-.84-.84h-9.63zM2 11.47c2.4 0 4.35 1.97 4.35 4.35v1.78h1.7c2.4 0 4.34 1.94 4.34 4.34H2.84a.84.84 0 01-.84-.84v-9.63z" />
+                          </svg>
+                          <p className="text-xs text-blue-800 dark:text-blue-200 truncate flex-1">{attachment.filename}</p>
+                        </div>
+                        <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                          By {attachment.author} • {(attachment.size / 1024).toFixed(1)} KB
+                        </p>
+                      </div>
+                    </button>
+                    <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="bg-blue-600 text-white text-xs px-2 py-1 rounded flex items-center gap-1">
+                        <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M11.53 2c0 2.4 1.97 4.35 4.35 4.35h1.78v1.7c0 2.4 1.94 4.34 4.34 4.34V2.84a.84.84 0 00-.84-.84h-9.63zM2 11.47c2.4 0 4.35 1.97 4.35 4.35v1.78h1.7c2.4 0 4.34 1.94 4.34 4.34H2.84a.84.84 0 01-.84-.84v-9.63z" />
+                        </svg>
+                        From Jira
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Jira Ticket */}
         {incident.jiraTicketKey && (
           <section className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4" aria-label="Jira ticket information">
-            <div className="flex items-start justify-between">
+            <div className="flex items-start justify-between mb-3">
               <div className="flex-1">
                 <div className="flex items-center space-x-2 mb-2">
                   <svg className="w-5 h-5 text-blue-600 dark:text-blue-400" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -269,21 +456,43 @@ export const IncidentStatusCard: React.FC<Props> = ({ incident }) => {
                   </p>
                 )}
               </div>
-              {incident.jiraTicketUrl && (
-                <a
-                  href={incident.jiraTicketUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="ml-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600 text-white text-sm font-semibold rounded-lg transition-colors flex items-center space-x-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-blue-400 dark:focus:ring-offset-gray-800 min-h-[44px]"
-                  aria-label={`View Jira ticket ${incident.jiraTicketKey} (opens in new tab)`}
+              <div className="ml-4 flex flex-col gap-2">
+                <button
+                  onClick={handleRefreshStatus}
+                  disabled={isRefreshing}
+                  className="px-4 py-2 bg-blue-100 dark:bg-blue-800 hover:bg-blue-200 dark:hover:bg-blue-700 text-blue-900 dark:text-blue-100 text-sm font-semibold rounded-lg transition-colors flex items-center space-x-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-blue-400 dark:focus:ring-offset-blue-900 min-h-[44px] disabled:opacity-50 disabled:cursor-not-allowed"
+                  aria-label="Refresh Jira status"
                 >
-                  <span>View in Jira</span>
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  <svg className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                   </svg>
-                </a>
-              )}
+                  <span>{isRefreshing ? 'Refreshing...' : 'Refresh Status'}</span>
+                </button>
+                {incident.jiraTicketUrl && (
+                  <a
+                    href={incident.jiraTicketUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600 text-white text-sm font-semibold rounded-lg transition-colors flex items-center space-x-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-blue-400 dark:focus:ring-offset-gray-800 min-h-[44px]"
+                    aria-label={`View Jira ticket ${incident.jiraTicketKey} (opens in new tab)`}
+                  >
+                    <span>View in Jira</span>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                  </a>
+                )}
+              </div>
             </div>
+            {refreshMessage && (
+              <div className={`mt-3 p-3 rounded-lg text-sm ${
+                refreshMessage.type === 'success'
+                  ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200'
+                  : 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200'
+              }`}>
+                {refreshMessage.text}
+              </div>
+            )}
           </section>
         )}
 
@@ -367,6 +576,43 @@ export const IncidentStatusCard: React.FC<Props> = ({ incident }) => {
           </section>
         )}
       </div>
+
+      {/* Image Lightbox Modal */}
+      {lightboxImage && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4"
+          onClick={() => setLightboxImage(null)}
+          onKeyDown={(e) => e.key === 'Escape' && setLightboxImage(null)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Image viewer"
+        >
+          <button
+            onClick={() => setLightboxImage(null)}
+            className="absolute top-4 right-4 text-white hover:text-gray-300 focus:outline-none focus:ring-2 focus:ring-white rounded-full p-2 bg-black/50 hover:bg-black/70 transition-colors z-10"
+            aria-label="Close image viewer"
+          >
+            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+
+          <div
+            className="relative max-w-7xl max-h-full"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img
+              src={lightboxImage.url}
+              alt={lightboxImage.filename}
+              className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
+              onClick={() => setLightboxImage(null)}
+            />
+            <div className="absolute bottom-0 left-0 right-0 bg-black/70 text-white px-4 py-3 rounded-b-lg">
+              <p className="text-sm font-medium truncate">{lightboxImage.filename}</p>
+            </div>
+          </div>
+        </div>
+      )}
     </article>
   );
 };

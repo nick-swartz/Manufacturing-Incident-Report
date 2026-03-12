@@ -160,6 +160,7 @@ export class StorageService {
     return {
       id: getColumnValue('id') as string,
       incidentId: getColumnValue('incident_id') as string,
+      queue: getColumnValue('queue') as 'manufacturing' | 'erp-support',
       affectedArea: getColumnValue('affected_area') as string,
       system: getColumnValue('system') as string,
       severity: getColumnValue('severity') as any,
@@ -176,7 +177,8 @@ export class StorageService {
       teamsMessageUrl: getColumnValue('teams_message_url') as string | null,
       attachmentPaths: JSON.parse((getColumnValue('attachment_paths') as string) || '[]'),
       status: getColumnValue('status') as any,
-      createdAt: new Date(getColumnValue('created_at') as string)
+      createdAt: new Date(getColumnValue('created_at') as string),
+      source: (getColumnValue('source') as 'local' | 'jira-queue') || 'local'
     };
   }
 
@@ -192,10 +194,14 @@ export class StorageService {
     const movedPaths: string[] = [];
 
     for (const file of files) {
-      const newPath = path.join(incidentDir, path.basename(file.path));
+      const fileName = path.basename(file.path);
+      const newPath = path.join(incidentDir, fileName);
       fs.renameSync(file.path, newPath);
-      movedPaths.push(newPath);
-      logger.debug(`Moved file to: ${newPath}`);
+
+      // Store relative path for URL access (e.g., "uploads/INC-20260302-451/image.jpg")
+      const relativePath = `uploads/${incidentId}/${fileName}`;
+      movedPaths.push(relativePath);
+      logger.debug(`Moved file to: ${newPath}, stored as: ${relativePath}`);
     }
 
     return movedPaths;
@@ -406,5 +412,271 @@ export class StorageService {
     }
 
     return users;
+  }
+
+  // Comment operations
+  addComment(
+    incidentId: string,
+    authorName: string,
+    authorEmail: string,
+    commentText: string,
+    jiraCommentId?: string,
+    source: 'local' | 'jira' = 'local'
+  ): number {
+    const db = getDb();
+
+    db.run(
+      `INSERT INTO comments (incident_id, author_name, author_email, comment_text, jira_comment_id, source)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [incidentId, authorName, authorEmail, commentText, jiraCommentId || null, source]
+    );
+
+    saveDatabase();
+    logger.info(`Comment added to incident ${incidentId} by ${authorName}`);
+
+    // Get the last inserted row ID
+    const result = db.exec('SELECT last_insert_rowid() as id');
+    return result[0].values[0][0] as number;
+  }
+
+  getComments(incidentId: string): Array<{
+    id: number;
+    incidentId: string;
+    authorName: string;
+    authorEmail: string;
+    commentText: string;
+    createdAt: string;
+    jiraCommentId: string | null;
+    source: 'local' | 'jira';
+  }> {
+    const db = getDb();
+    const result = db.exec(
+      `SELECT * FROM comments WHERE incident_id = ? ORDER BY created_at DESC`,
+      [incidentId]
+    );
+
+    if (result.length === 0 || result[0].values.length === 0) return [];
+
+    const columns = result[0].columns;
+    const comments: Array<{
+      id: number;
+      incidentId: string;
+      authorName: string;
+      authorEmail: string;
+      commentText: string;
+      createdAt: string;
+      jiraCommentId: string | null;
+      source: 'local' | 'jira';
+    }> = [];
+
+    for (const row of result[0].values) {
+      const getColumnValue = (name: string): any => {
+        const index = columns.indexOf(name);
+        return index >= 0 ? row[index] : null;
+      };
+
+      comments.push({
+        id: getColumnValue('id') as number,
+        incidentId: getColumnValue('incident_id') as string,
+        authorName: getColumnValue('author_name') as string,
+        authorEmail: getColumnValue('author_email') as string,
+        commentText: getColumnValue('comment_text') as string,
+        createdAt: getColumnValue('created_at') as string,
+        jiraCommentId: getColumnValue('jira_comment_id') as string | null,
+        source: getColumnValue('source') as 'local' | 'jira'
+      });
+    }
+
+    return comments;
+  }
+
+  updateCommentWithJiraId(commentId: number, jiraCommentId: string): void {
+    const db = getDb();
+
+    db.run(
+      `UPDATE comments SET jira_comment_id = ? WHERE id = ?`,
+      [jiraCommentId, commentId]
+    );
+
+    saveDatabase();
+    logger.info(`Updated comment ${commentId} with Jira ID ${jiraCommentId}`);
+  }
+
+  commentExistsByJiraId(jiraCommentId: string): boolean {
+    const db = getDb();
+    const result = db.exec(
+      `SELECT COUNT(*) as count FROM comments WHERE jira_comment_id = ?`,
+      [jiraCommentId]
+    );
+
+    if (result.length === 0 || result[0].values.length === 0) return false;
+
+    return (result[0].values[0][0] as number) > 0;
+  }
+
+  incidentExistsByJiraKey(jiraKey: string): boolean {
+    const db = getDb();
+    const result = db.exec(
+      `SELECT COUNT(*) as count FROM incidents WHERE jira_ticket_key = ?`,
+      [jiraKey]
+    );
+
+    if (result.length === 0 || result[0].values.length === 0) return false;
+
+    return (result[0].values[0][0] as number) > 0;
+  }
+
+  incidentExistsById(incidentId: string): boolean {
+    const db = getDb();
+    const result = db.exec(
+      `SELECT COUNT(*) as count FROM incidents WHERE incident_id = ?`,
+      [incidentId]
+    );
+
+    if (result.length === 0 || result[0].values.length === 0) return false;
+
+    return (result[0].values[0][0] as number) > 0;
+  }
+
+  clearSyncedJiraTickets(projectKey?: string): number {
+    const db = getDb();
+
+    let sql = `DELETE FROM incidents WHERE source = 'jira-queue'`;
+    const params: string[] = [];
+
+    if (projectKey) {
+      sql += ` AND jira_ticket_key LIKE ?`;
+      params.push(`${projectKey}-%`);
+    }
+
+    db.run(sql, params);
+
+    // Get count of deleted rows
+    const result = db.exec(`SELECT changes() as count`);
+    const deletedCount = result[0].values[0][0] as number;
+
+    saveDatabase();
+    logger.info(`Cleared ${deletedCount} synced Jira tickets${projectKey ? ` from project ${projectKey}` : ''}`);
+
+    return deletedCount;
+  }
+
+  private categorizeJiraTicket(summary: string, description: string): string {
+    const summaryLower = summary.toLowerCase();
+    const descriptionLower = description.toLowerCase();
+    const combined = `${summaryLower} ${descriptionLower}`;
+
+    // System Errors (check first to avoid false categorization)
+    if (combined.includes('error') || combined.includes('server') ||
+        combined.includes('system error') || combined.includes('500') ||
+        combined.includes('404') || combined.includes('timeout')) {
+      return 'System Errors / Technical';
+    }
+
+    // EQ Configurator / Ordering System (consolidated: orders, pricing, inventory, configurator)
+    if (combined.includes('eq') || combined.includes('configurator') ||
+        combined.includes('dropdown') || combined.includes('not available in') ||
+        combined.includes('missing from eq') || combined.includes('eq ordering') ||
+        combined.includes('place order') || combined.includes('configure') ||
+        combined.includes('unavailable') || combined.includes('not available') ||
+        combined.includes('order') || combined.includes('co ') ||
+        combined.includes('cancel') || combined.includes('release') ||
+        combined.includes('unlock') || summaryLower.startsWith('order ') ||
+        combined.includes('price') || combined.includes('pricing') ||
+        combined.includes('discount') || combined.includes('cost') ||
+        combined.includes('inventory') || combined.includes('stock') ||
+        combined.includes('atp') || combined.includes('sold out') ||
+        combined.includes('on hand') || combined.includes('missing')) {
+      return 'EQ Configurator / Ordering';
+    }
+
+    // M3 ERP System (consolidated: M3, CRM, Data/Reporting, screens, access)
+    if (combined.includes('m3') || combined.includes('infor') ||
+        combined.includes('ois') || combined.includes('mms') ||
+        combined.includes('pms') || combined.includes('crs') ||
+        combined.includes('crm') || combined.includes('customer') ||
+        combined.includes('account') || combined.includes('credit hold') ||
+        combined.includes('data') || combined.includes('report') ||
+        combined.includes('export') || combined.includes('publisher') ||
+        combined.includes('screen') || combined.includes('access') ||
+        combined.includes('permission')) {
+      return 'M3 ERP System';
+    }
+
+    // Default / Other - catches anything that doesn't match above categories
+    return 'Other';
+  }
+
+  createIncidentFromJira(
+    id: string,
+    incidentId: string,
+    jiraTicket: {
+      key: string;
+      summary: string;
+      description: string;
+      status: string;
+      assignee: string | null;
+      reporter: string;
+      reporterEmail: string;
+      created: string;
+      priority: string;
+    },
+    queue: 'manufacturing' | 'erp-support'
+  ): void {
+    const db = getDb();
+
+    // Map Jira priority to our severity
+    const severityMap: Record<string, string> = {
+      'Highest': 'CRITICAL',
+      'High': 'HIGH',
+      'Medium': 'MEDIUM',
+      'Low': 'LOW'
+    };
+    const severity = severityMap[jiraTicket.priority] || 'MEDIUM';
+
+    // Intelligently categorize the ticket based on content
+    const affectedArea = this.categorizeJiraTicket(jiraTicket.summary, jiraTicket.description);
+
+    db.run(
+      `INSERT INTO incidents (
+        id, incident_id, queue, affected_area, system, severity,
+        impact_description, symptoms, start_time, reporter_name,
+        reporter_contact, attachment_paths, status, submitted_by_user_id,
+        submitted_as_guest, jira_ticket_key, jira_ticket_url, jira_status,
+        jira_assignee, source, created_at, jira_key_normalized
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        incidentId,
+        queue,
+        affectedArea, // Use intelligent categorization
+        jiraTicket.summary.substring(0, 100), // system (use summary)
+        severity,
+        jiraTicket.description || 'See Jira ticket for details',
+        jiraTicket.summary,
+        jiraTicket.created,
+        jiraTicket.reporter,
+        jiraTicket.reporterEmail || jiraTicket.reporter,
+        JSON.stringify([]),
+        'submitted',
+        null,
+        1, // submitted_as_guest
+        jiraTicket.key,
+        `${this.getJiraUrl()}/browse/${jiraTicket.key}`,
+        jiraTicket.status,
+        jiraTicket.assignee,
+        'jira-queue',
+        jiraTicket.created,
+        jiraTicket.key.toUpperCase()
+      ]
+    );
+
+    saveDatabase();
+    logger.info(`Created incident from Jira ticket: ${jiraTicket.key} -> ${incidentId} [${affectedArea}]`);
+  }
+
+  private getJiraUrl(): string {
+    // Get Jira URL from environment or default
+    return process.env.JIRA_URL || 'https://jira.company.com';
   }
 }
